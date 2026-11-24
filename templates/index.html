@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>고양이 돌봄</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">오늘</p>
+      <h1>고양이 돌봄</h1>
+    </div>
+    <a class="text-link" href="/settings">설정</a>
+  </header>
+
+  <p id="alert" class="banner" hidden></p>
+
+  <section class="counts" aria-label="오늘 횟수">
+    <article>
+      <p class="label">밥</p>
+      <p class="num" id="meal">–</p>
+      <p class="unit">회</p>
+    </article>
+    <article>
+      <p class="label">화장실</p>
+      <p class="num" id="litter">–</p>
+      <p class="unit">회</p>
+    </article>
+    <article>
+      <p class="label">청소까지</p>
+      <p class="num" id="clean">–</p>
+      <p class="unit" id="clean-unit">회</p>
+    </article>
+  </section>
+
+  <p class="meta" id="plan"></p>
+
+  <section>
+    <h2>하루 루틴</h2>
+    <ul id="routine" class="routine"><li class="empty">불러오는 중</li></ul>
+  </section>
+
+  <script>
+    const ZONE = {bowl: "밥그릇", litter: "화장실"};
+    const ALERT = {meal: "밥 시간", clean: "화장실 청소 필요"};
+
+    function text(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function showAlert(alerts) {
+      const banner = document.getElementById("alert");
+      if (!alerts.length) {
+        banner.hidden = true;
+        return;
+      }
+      const first = ALERT[alerts[0].type] || alerts[0].type;
+      banner.hidden = false;
+      banner.textContent = alerts.length > 1 ? `${first} 외 ${alerts.length - 1}개` : first;
+    }
+
+    function showRoutine(items) {
+      const list = document.getElementById("routine");
+      list.replaceChildren();
+      if (!items.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty";
+        empty.textContent = "오늘 기록이 없습니다.";
+        list.append(empty);
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement("li");
+        const when = document.createElement("span");
+        when.textContent = (item.entered_at || "").slice(11, 16);
+        const body = document.createElement("span");
+        const zone = ZONE[item.zone] || item.zone;
+        const seconds = Math.round(item.duration_s);
+        const counted = item.counted ? `${zone === "밥그릇" ? "밥" : "화장실"} 1회` : "지나감";
+        body.textContent = `${zone} · ${seconds}초 · ${counted}`;
+        li.append(when, body);
+        list.append(li);
+      }
+    }
+
+    async function refresh() {
+      const [statusRes, routineRes] = await Promise.all([
+        fetch("/api/status"),
+        fetch("/api/routine"),
+      ]);
+      const status = await statusRes.json();
+      const routine = await routineRes.json();
+      text("meal", status.meal_count);
+      text("litter", status.litter_count);
+      text("clean", status.clean_remaining);
+      text("clean-unit", `회 · 기준 ${status.clean_threshold}회`);
+      text("plan", `밥 ${status.meal_times.replaceAll(",", " · ")}  ·  놀이 ${status.play_time} ${status.play_minutes}분`);
+      showAlert(status.alerts);
+      showRoutine(routine.items);
+    }
+
+    refresh().catch(() => {
+      document.querySelector("#routine .empty").textContent = "기록을 불러오지 못했습니다.";
+    });
+    setInterval(() => refresh().catch(() => {}), 5000);
+  </script>
+</body>
+</html>
